@@ -213,6 +213,7 @@ def replace_with_thresholds(df, col_name):
     df.loc[(df[col_name] > up), col_name] = up
     df.loc[(df[col_name] < low), col_name] = low
 
+
 ################################
 df = load()
 cat_cols, num_cols, cat_but_car = grab_col_names(df)
@@ -226,20 +227,19 @@ for col in num_cols:
     replace_with_thresholds(df, col)
 
 for col in num_cols:
-    print(col, check_outlier(df, col)) # replace_with_thresholds kullandık ve aykırı değer kalmadı
+    print(col, check_outlier(df, col))  # replace_with_thresholds kullandık ve aykırı değer kalmadı
 
 ###################
 # Recap
 ###################
 df = load()
-outlier_thresholds(df, "Age") # Aykırı değeri saptama işlemini yaptık ve threshold değerlerini aldık
-check_outlier(df, "Age") # thresholdlara göre aykırı değer var mı yok mu
-grab_outlier(df, "Age", True) # aykırı değerleri görmek için
-remove_outlier(df, "Age") # aykırı değerleri silmek için
-replace_with_thresholds(df, "Age") # aykırı değerleri baskılamak için threshold değerlerine göre değiştir
+outlier_thresholds(df, "Age")  # Aykırı değeri saptama işlemini yaptık ve threshold değerlerini aldık
+check_outlier(df, "Age")  # thresholdlara göre aykırı değer var mı yok mu
+grab_outlier(df, "Age", True)  # aykırı değerleri görmek için
+remove_outlier(df, "Age")  # aykırı değerleri silmek için
+replace_with_thresholds(df, "Age")  # aykırı değerleri baskılamak için threshold değerlerine göre değiştir
 
-check_outlier(df, "Age") # aykırı değer kalmadı
-
+check_outlier(df, "Age")  # aykırı değer kalmadı
 
 #############################################
 # Çok Değişkenli Aykırı Değer Analizi: Local Outlier Factor
@@ -253,7 +253,6 @@ df.shape
 
 for col in df.columns:
     print(col, check_outlier(df, col))
-
 
 clf = LocalOutlierFactor(n_neighbors=20)
 clf.fit_predict(df)
@@ -269,4 +268,127 @@ df[df_scores < th]
 df.describe([0.01, 0.05, 0.75, 0.90, 0.99]).T
 
 df[df_scores < th].drop(axis=0, labels=df[df_scores < th].index)
+
+#############################################
+# Missing Values (Eksik Değerler)
+#############################################
+
+#############################################
+# Eksik Değerlerin Yakalanması
+#############################################
+
+# en az bir tane eksik degere sahip olan gözlem birimleri
+df[df.isnull().any(axis=1)]
+
+(df.isnull().sum() / df.shape[0] * 100).sort_values(ascending=False)
+
+na_cols = [col for col in df.columns if df[col].isnull().sum() > 0]
+
+
+def missing_values_table(df, na_name=False):
+    na_columns = [col for col in df.columns if df[col].isnull().sum() > 0]
+    n_miss = df[na_columns].isnull().sum().sort_values(ascending=False)
+    ratio = (df[na_columns].isnull().sum() / df.shape[0] * 100).sort_values(ascending=False)
+    missing_df = pd.concat([n_miss, np.round(ratio, 2)], axis=1, keys=["n_miss", "ratio"])
+    print(missing_df)
+
+    if na_name:
+        return na_columns
+
+
+missing_values_table(df)
+
+###################
+# Çözüm 1: Hızlıca silmek
+###################
+df.dropna().shape
+
+###################
+# Çözüm 2: Basit Atama Yöntemleri ile Doldurmak
+###################
+
+
+df.Age.fillna(df.Age.mean()).isnull().sum()
+dff = df.apply(lambda x: x.fillna(x.mean()) if x.dtype != "O" else x,
+               axis=0).head()  # 1 sütunu al demek bütün satırlara bak demektir o yüzden axis 0
+
+dff.isnull().sum()
+dff.Embarked.fillna(dff.Embarked.mode()[0]).isnull().sum()
+
+df.apply(lambda x: x.fillna(x.mode()[0]) if (x.dtype == "O" and len(x.unique()) <= 10) else x, axis=0).isnull().sum()
+
+###################
+# Kategorik Değişken Kırılımında Değer Atama
+###################
+
+df["Age"].fillna(df.groupby("Sex")["Age"].transform("mean")).isnull().sum()
+
+df.loc[(df["Age"].isnull()) & (df["Sex"] == "female"), "Age"] = df.groupby("Sex")["Age"].mean()["female"]
+df.loc[(df["Age"].isnull()) & (df["Sex"] == "male"), "Age"] = df.groupby("Sex")["Age"].mean()["male"]
+
+#############################################
+# Çözüm 3: Tahmine Dayalı Atama ile Doldurma
+#############################################
+
+df = load()
+cat_cols, num_cols, cat_but_car = grab_col_names(df)
+num_cols = [col for col in num_cols if col not in "PassengerId"]
+
+dff = pd.get_dummies(df[cat_cols + num_cols], drop_first=True)
+dff.head()
+
+scaler = MinMaxScaler()
+dff = pd.DataFrame(scaler.fit_transform(dff), columns=dff.columns)
+dff.head()
+missing_values_table(dff)
+
+from sklearn.impute import KNNImputer
+
+imputer = KNNImputer(n_neighbors=5)
+dff = pd.DataFrame(imputer.fit_transform(dff), columns=dff.columns)
+dff.head()
+missing_values_table(dff)
+
+dff = pd.DataFrame(scaler.inverse_transform(dff), columns=dff.columns)
+dff.head()
+
+df["age_imputed_knn"] = dff["Age"]
+df.loc[df["Age"].isnull()][["Age", "age_imputed_knn"]].head()
+
+#############################################
+# Gelişmiş Analizler
+#############################################
+
+###################
+# Eksik Veri Yapısının İncelenmesi
+###################
+
+msno.bar(df)
+plt.show()
+
+msno.matrix(df)
+plt.show()
+
+msno.heatmap(df)
+plt.show()
+
+###################
+# Eksik Değerlerin Bağımlı Değişken ile İlişkisinin İncelenmesi
+###################
+
+na_cols = missing_values_table(df, True)
+
+def missing_vs_target(df, target, na_columns):
+    temp_df = df.copy()
+
+    for col in na_columns:
+        temp_df[col + "_NA_FLAG"] = np.where(temp_df[col].isnull(), 1, 0)
+
+    na_flags = temp_df.loc[:, temp_df.columns.str.contains("_NA_")].columns
+    for col in na_flags:
+        print(pd.DataFrame({"TARGET_MEAN": temp_df.groupby(col)[target].mean(),
+                            "Count": temp_df.groupby(col)[target].count()}))
+
+
+missing_vs_target(df, "Survived", na_cols)
 
