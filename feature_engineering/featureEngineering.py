@@ -2,7 +2,9 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 from matplotlib import pyplot as plt
-# !pip install missingno
+import matplotlib
+
+matplotlib.use("Qt5Agg")
 import missingno as msno
 from datetime import date
 from sklearn.metrics import accuracy_score
@@ -378,6 +380,7 @@ plt.show()
 
 na_cols = missing_values_table(df, True)
 
+
 def missing_vs_target(df, target, na_columns):
     temp_df = df.copy()
 
@@ -392,3 +395,186 @@ def missing_vs_target(df, target, na_columns):
 
 missing_vs_target(df, "Survived", na_cols)
 
+#############################################
+# 3. Encoding (Label Encoding, One-Hot Encoding, Rare Encoding)
+#############################################
+
+#############################################
+# Label Encoding & Binary Encoding
+#############################################
+
+le = LabelEncoder()
+le.fit_transform(df["Sex"])[:5]
+le.inverse_transform([0, 1])
+
+
+def label_encoder(df, binary_col):
+    le = LabelEncoder()
+    df[binary_col] = le.fit_transform(df[binary_col])
+    return df
+
+
+binary_col = [col for col in df.columns if
+              df[col].dtype not in ["float64", "float32", "float", "int64", "int32", "int"] and df[col].nunique() == 2]
+# nunique boş verileri almaz o yüzden len(df[col].unique()) yapmak yerine bu şekilde kullandık
+
+
+for col in binary_col:
+    label_encoder(df, col)
+
+#############################################
+# One-Hot Encoding
+#############################################
+
+df = load()
+pd.get_dummies(df, columns=["Embarked"]).head()
+pd.get_dummies(df, columns=["Embarked"], drop_first=True).head()
+pd.get_dummies(df, columns=["Embarked"], dummy_na=True).head()
+pd.get_dummies(df, columns=binary_col + ["Embarked"], drop_first=True).head()
+
+
+def one_hot_encoder(df, categorical_cols, drop_first=True):
+    df = pd.get_dummies(df, columns=categorical_cols, drop_first=drop_first)
+    return df
+
+
+df = load()
+
+ohe_cols = [col for col in df.columns if 10 >= df[col].nunique() > 2]
+one_hot_encoder(df, ohe_cols).head()
+
+#############################################
+# Rare Encoding
+#############################################
+
+# 1. Kategorik değişkenlerin azlık çokluk durumunun analiz edilmesi.
+# 2. Rare kategoriler ile bağımlı değişken arasındaki ilişkinin analiz edilmesi.
+# 3. Rare encoder yazacağız.
+
+###################
+# 1. Kategorik değişkenlerin azlık çokluk durumunun analiz edilmesi.
+###################
+
+df = load_application_train()
+df["NAME_EDUCATION_TYPE"].value_counts()
+
+cat_cols, num_cols, cat_but_car = grab_col_names(df)
+
+
+def cat_summary(df, col_name, plot=False):
+    print(pd.DataFrame({
+        col_name: df[col_name].value_counts(),
+        "Ratio": df[col_name].value_counts() / len(df) * 100
+    }))
+    print("#" * 50)
+
+    if plot:
+        sns.countplot(x=col_name, data=df)
+        plt.show(block=True)
+
+
+for col in cat_cols:
+    cat_summary(df, col)
+
+###################
+# 2. Rare kategoriler ile bağımlı değişken arasındaki ilişkinin analiz edilmesi.
+###################
+df.groupby("NAME_INCOME_TYPE")["TARGET"].mean()
+
+
+def rare_analyser(df, target, cat_cols):
+    for col in cat_cols:
+        print(col, ":", len(df[col].value_counts()))
+        print(pd.DataFrame({
+            "COUNT": df[col].value_counts(),
+            "RATIO": df[col].value_counts() / len(df),
+            "TARGET_MEAN": df.groupby(col)[target].mean()
+        }), end="\n\n")
+
+
+rare_analyser(df, "TARGET", cat_cols)
+
+
+#############################################
+# 3. Rare encoder'ın yazılması.
+#############################################
+
+def rare_encoder(df, rare_perc):
+    temp_df = df.copy()
+    rare_columns = [col for col in temp_df.columns if temp_df[col].dtype == "O" and
+                    (temp_df[col].value_counts() / len(temp_df) < rare_perc).any(axis=None)]
+    # bu şarta uyan kolon var mı
+    for var in rare_columns:
+        tmp = temp_df[var].value_counts() / len(temp_df)
+        rare_labels = tmp[tmp < rare_perc].index
+        temp_df[var] = np.where(temp_df[var].isin(rare_labels), "Rare", temp_df[var])
+    return temp_df
+
+
+new_df = rare_encoder(df, 0.01)
+rare_analyser(new_df, "TARGET", cat_cols)
+
+#############################################
+# Feature Scaling (Özellik Ölçeklendirme)
+#############################################
+
+###################
+# StandardScaler: Klasik standartlaştırma. Ortalamayı çıkar, standart sapmaya böl. z = (x - u) / s
+###################
+
+df = load()
+ss = StandardScaler()
+df["Age_standard_scaler"] = ss.fit_transform(df[["Age"]])
+
+###################
+# RobustScaler: Medyanı çıkar iqr'a böl.
+###################
+
+rs = RobustScaler()
+df["Age_robust_scaler"] = rs.fit_transform(df[["Age"]])
+
+###################
+# MinMaxScaler: Verilen 2 değer arasında değişken dönüşümü
+###################
+
+# X_std = (X - X.min(axis=0)) / (X.max(axis=0) - X.min(axis=0))
+# X_scaled = X_std * (max - min) + min
+
+mms = MinMaxScaler()
+df["Age_minmax"] = mms.fit_transform(df[["Age"]])
+
+df.describe().T
+
+age_cols = [col for col in df.columns if "Age" in col]
+
+
+def num_summary(df, numerical_col, plot=False):
+    quantiles = [0.05, 0.10, 0.20, 0.30, 0.40, 0.50, 0.60, 0.70, 0.80, 0.90, 0.95, 0.99]
+    print(df[numerical_col].describe(quantiles).T)
+
+    if plot:
+        sns.histplot(df[numerical_col], bins=20)
+        plt.show(block=True)
+
+        # df[numerical_col].hist(bins=20)
+        # plt.show(block=True)
+
+
+for col in age_cols:
+    num_summary(df, col, True)
+
+###################
+# Numeric to Categorical: Sayısal Değişkenleri Kateorik Değişkenlere Çevirme
+# Binning
+###################
+
+df["Age_qcut"] = pd.qcut(df["Age"], 5)
+df.head()
+
+#############################################
+# Feature Extraction (Özellik Çıkarımı)
+#############################################
+
+#############################################
+# Binary Features: Flag, Bool, True-False
+#############################################
