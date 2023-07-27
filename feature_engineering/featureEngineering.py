@@ -132,6 +132,8 @@ def grab_col_names(df, cat_th=10, car_th=20):
     cat_cols = [col for col in cat_cols if col not in cat_but_car]
 
     num_cols = [col for col in df.columns if df[col].dtypes != "O"]
+    # num_cols = [col for col in df.columns if df[col].dtypes in ["int", "float", "int32", "float32", "int64",
+    #                                                             "float64"]]
     num_cols = [col for col in num_cols if col not in num_but_cat]
 
     print(f"Observations: {df.shape[0]}")
@@ -158,8 +160,10 @@ def grab_outlier(df, col_name, index=False):
     low, up = outlier_thresholds(df, col)
 
     if df[(df[col_name] > up) | (df[col_name] < low)].shape[0] > 10:
+        print(f"{col_name} Aykırı değer sayısı:", len(df[(df[col_name] > up) | (df[col_name] < low)]))
         print(df[(df[col_name] > up) | (df[col_name] < low)].head())
     else:
+        print(f"{col_name} Aykırı değer sayısı:", len(df[(df[col_name] > up) | (df[col_name] < low)]))
         print(df[(df[col_name] > up) | (df[col_name] < low)])
 
     if index:
@@ -308,7 +312,7 @@ df.dropna().shape
 ###################
 # Çözüm 2: Basit Atama Yöntemleri ile Doldurmak
 ###################
-
+df = load()
 
 df.Age.fillna(df.Age.mean()).isnull().sum()
 dff = df.apply(lambda x: x.fillna(x.mean()) if x.dtype != "O" else x,
