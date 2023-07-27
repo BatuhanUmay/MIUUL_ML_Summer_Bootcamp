@@ -434,7 +434,7 @@ pd.get_dummies(df, columns=binary_col + ["Embarked"], drop_first=True).head()
 
 
 def one_hot_encoder(df, categorical_cols, drop_first=True):
-    df = pd.get_dummies(df, columns=categorical_cols, drop_first=drop_first)
+    df = pd.get_dummies(df, columns=categorical_cols, drop_first=drop_first, dtype=int)
     return df
 
 
@@ -684,3 +684,169 @@ df.loc[(df['Sex'] == 'female') & (df['Age'] > 21) & (df['Age'] < 50), 'NEW_SEX_C
 df.loc[(df['Sex'] == 'female') & (df['Age'] >= 50), 'NEW_SEX_CAT'] = 'seniorfemale'
 
 df.groupby("NEW_SEX_CAT").agg({"Survived": "mean"})
+
+#############################################
+# Titanic Uçtan Uca Feature Engineering & Data Preprocessing
+#############################################
+
+df = load()
+df.shape
+df.head()
+
+df.columns = [col.upper() for col in df.columns]
+
+#############################################
+# 1. Feature Engineering (Değişken Mühendisliği)
+#############################################
+
+# Cabin bool
+df["NEW_CABIN_BOOL"] = df["CABIN"].notnull().astype('int')
+# Name count
+df["NEW_NAME_COUNT"] = df["NAME"].str.len()
+# name word count
+df["NEW_NAME_WORD_COUNT"] = df["NAME"].apply(lambda x: len(str(x).split(" ")))
+# name dr
+df["NEW_NAME_DR"] = df["NAME"].apply(lambda x: len([x for x in x.split() if x.startswith("Dr")]))
+# name title
+df['NEW_TITLE'] = df.NAME.str.extract(' ([A-Za-z]+)\.', expand=False)
+# family size
+df["NEW_FAMILY_SIZE"] = df["SIBSP"] + df["PARCH"] + 1
+# age_pclass
+df["NEW_AGE_PCLASS"] = df["AGE"] * df["PCLASS"]
+# is alone
+df.loc[((df['SIBSP'] + df['PARCH']) > 0), "NEW_IS_ALONE"] = "NO"
+df.loc[((df['SIBSP'] + df['PARCH']) == 0), "NEW_IS_ALONE"] = "YES"
+# age level
+df.loc[(df['AGE'] < 18), 'NEW_AGE_CAT'] = 'young'
+df.loc[(df['AGE'] >= 18) & (df['AGE'] < 56), 'NEW_AGE_CAT'] = 'mature'
+df.loc[(df['AGE'] >= 56), 'NEW_AGE_CAT'] = 'senior'
+# sex x age
+df.loc[(df['SEX'] == 'male') & (df['AGE'] <= 21), 'NEW_SEX_CAT'] = 'youngmale'
+df.loc[(df['SEX'] == 'male') & (df['AGE'] > 21) & (df['AGE'] < 50), 'NEW_SEX_CAT'] = 'maturemale'
+df.loc[(df['SEX'] == 'male') & (df['AGE'] >= 50), 'NEW_SEX_CAT'] = 'seniormale'
+df.loc[(df['SEX'] == 'female') & (df['AGE'] <= 21), 'NEW_SEX_CAT'] = 'youngfemale'
+df.loc[(df['SEX'] == 'female') & (df['AGE'] > 21) & (df['AGE'] < 50), 'NEW_SEX_CAT'] = 'maturefemale'
+df.loc[(df['SEX'] == 'female') & (df['AGE'] >= 50), 'NEW_SEX_CAT'] = 'seniorfemale'
+
+cat_cols, num_cols, cat_but_car = grab_col_names(df)
+num_cols = [col for col in num_cols if "PASSENGERID" not in col]
+
+#############################################
+# 2. Outliers (Aykırı Değerler)
+#############################################
+
+for col in num_cols:
+    print(col, check_outlier(df, col))
+
+for col in num_cols:
+    replace_with_thresholds(df, col)
+
+#############################################
+# 3. Missing Values (Eksik Değerler)
+#############################################
+
+missing_values_table(df)
+df.drop(["CABIN", "TICKET", "NAME"], inplace=True, axis=1)
+
+df["AGE"] = df["AGE"].fillna(df.groupby("NEW_TITLE")["AGE"].transform("median"))
+df["NEW_AGE_PCLASS"] = df["AGE"] * df["PCLASS"]
+
+df.loc[(df['AGE'] < 18), 'NEW_AGE_CAT'] = 'young'
+df.loc[(df['AGE'] >= 18) & (df['AGE'] < 56), 'NEW_AGE_CAT'] = 'mature'
+df.loc[(df['AGE'] >= 56), 'NEW_AGE_CAT'] = 'senior'
+
+df.loc[(df['SEX'] == 'male') & (df['AGE'] <= 21), 'NEW_SEX_CAT'] = 'youngmale'
+df.loc[(df['SEX'] == 'male') & (df['AGE'] > 21) & (df['AGE'] < 50), 'NEW_SEX_CAT'] = 'maturemale'
+df.loc[(df['SEX'] == 'male') & (df['AGE'] >= 50), 'NEW_SEX_CAT'] = 'seniormale'
+df.loc[(df['SEX'] == 'female') & (df['AGE'] <= 21), 'NEW_SEX_CAT'] = 'youngfemale'
+df.loc[(df['SEX'] == 'female') & (df['AGE'] > 21) & (df['AGE'] < 50), 'NEW_SEX_CAT'] = 'maturefemale'
+df.loc[(df['SEX'] == 'female') & (df['AGE'] >= 50), 'NEW_SEX_CAT'] = 'seniorfemale'
+
+df = df.apply(lambda x: x.fillna(x.mode()[0]) if (x.dtype == "O" and len(x.unique()) <= 10) else x, axis=0)
+
+#############################################
+# 4. Label Encoding
+#############################################
+
+binary_cols = [col for col in df.columns if
+               df[col].dtype not in ["float64", "float32", "float", "int64", "int32", "int"] and df[col].nunique() == 2]
+
+for col in binary_cols:
+    df = label_encoder(df, col)
+
+#############################################
+# 5. Rare Encoding
+#############################################
+
+rare_analyser(df, "SURVIVED", cat_cols)
+df = rare_encoder(df, 0.01)
+
+#############################################
+# 6. One-Hot Encoding
+#############################################
+
+ohe_cols = [col for col in df.columns if 10 >= df[col].nunique() > 2]
+df = one_hot_encoder(df, ohe_cols)
+
+cat_cols, num_cols, cat_but_car = grab_col_names(df)
+num_cols = [col for col in num_cols if "PASSENGERID" not in col]
+
+rare_analyser(df, "SURVIVED", cat_cols)
+useless_cols = [col for col in df.columns if df[col].nunique() == 2 and
+                (df[col].value_counts() / len(df) < 0.01).any(axis=None)]
+# df.drop(useless_cols, axis=1, inplace=True)
+
+#############################################
+# 7. Standart Scaler
+#############################################
+
+sc = StandardScaler()
+df[num_cols] = sc.fit_transform(df[num_cols])
+
+#############################################
+# 8. Model
+#############################################
+
+y = df["SURVIVED"]
+X = df.drop(["PASSENGERID", "SURVIVED"], axis=1)
+
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.30, random_state=17)
+
+from sklearn.ensemble import RandomForestClassifier
+
+rf_model = RandomForestClassifier(random_state=46).fit(X_train, y_train)
+y_pred = rf_model.predict(X_test)
+accuracy_score(y_pred, y_test)
+
+
+#############################################
+# Hiç bir işlem yapılmadan elde edilecek skor?
+#############################################
+
+# dff = load()
+# dff.dropna(inplace=True)
+# dff = pd.get_dummies(dff, columns=["Sex", "Embarked"], drop_first=True)
+# y = dff["Survived"]
+# X = dff.drop(["PassengerId", "Survived", "Name", "Ticket", "Cabin"], axis=1)
+# X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.30, random_state=17)
+# rf_model = RandomForestClassifier(random_state=46).fit(X_train, y_train)
+# y_pred = rf_model.predict(X_test)
+# accuracy_score(y_pred, y_test)
+
+
+# Yeni ürettiğimiz değişkenler ne alemde?
+
+def plot_importance(model, features, num=len(X), save=False):
+    feature_imp = pd.DataFrame({'Value': model.feature_importances_, 'Feature': features.columns})
+    plt.figure(figsize=(10, 10))
+    sns.set(font_scale=1)
+    sns.barplot(x="Value", y="Feature", data=feature_imp.sort_values(by="Value",
+                                                                     ascending=False)[0:num])
+    plt.title('Features')
+    plt.tight_layout()
+    plt.show()
+    if save:
+        plt.savefig('importances.png')
+
+
+plot_importance(rf_model, X_train)
