@@ -7,10 +7,12 @@ import matplotlib
 matplotlib.use("Qt5Agg")
 import missingno as msno
 from datetime import date
-from sklearn.metrics import accuracy_score
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score, confusion_matrix, \
+    classification_report
 from sklearn.model_selection import train_test_split
 from sklearn.neighbors import LocalOutlierFactor
 from sklearn.preprocessing import MinMaxScaler, LabelEncoder, StandardScaler, RobustScaler
+from sklearn.ensemble import RandomForestClassifier
 
 pd.set_option('display.max_columns', None)
 pd.set_option('display.max_rows', None)
@@ -37,6 +39,7 @@ def check_df(dataframe, head=5):
     print(dataframe.isnull().sum())
     print("##################### Quantiles #####################")
     print(dataframe.describe([0, 0.05, 0.50, 0.95, 0.99, 1]).T)
+
 
 check_df(df)
 
@@ -66,6 +69,7 @@ def grab_col_names(df, cat_th=10, car_th=20):
 
 cat_cols, num_cols, cat_but_car = grab_col_names(df)
 
+
 # Adım 3: Numerik ve kategorik değişkenlerin analizini yapınız.
 
 # Categorical variable analysis
@@ -77,8 +81,10 @@ def cat_summary(df, col_name, plot=False):
         sns.countplot(x=df[col_name], data=df)
         plt.show()
 
+
 for col in cat_cols:
     cat_summary(df, col, plot=True)
+
 
 # Numerical variable analysis
 def num_summary(df, numerical_col, plot=False):
@@ -86,24 +92,45 @@ def num_summary(df, numerical_col, plot=False):
     print(df[numerical_col].describe(quantiles).T)
 
     if plot:
-        df[numerical_col].hist(bins=20)
-        plt.xlabel(numerical_col)
-        plt.title(numerical_col)
+        plt.figure(figsize=(10, 5))
+        # df[numerical_col].hist(bins=20)
+        sns.histplot(df[numerical_col], kde=True)
         plt.show()
+
 
 for col in num_cols:
     num_summary(df, col, plot=True)
 
+
 # Adım 4: Hedef değişken analizi yapınız. (Kategorik değişkenlere göre hedef değişkenin
 # ortalaması, hedef değişkene göre numerik değişkenlerin ortalaması)
 
+def target_summary_with_cat(df, target, categorical_col):
+    print(categorical_col)
+    print(pd.DataFrame({"Target_Mean": df.groupby(cat_cols)[target].mean(),
+                        "Count": df[categorical_col].value_counts(),
+                        "Ratio": 100 * df[categorical_col].value_counts() / len(df)}), end="\n\n\n")
+
+
+for col in cat_cols:
+    target_summary_with_cat(df, "Outcome", col)
+
+
+# Analysis of numerical variables according to target variable
+
+def target_summary_with_num(df, target, numerical_col):
+    print(df.groupby(target).agg({numerical_col: "mean"}))
+    print("#" * 50)
+
+
 for col in num_cols:
-    print(df.groupby(col).agg({"Outcome": ["mean"]}))
+    target_summary_with_num(df, "Outcome", col)
 
 
 # Adım 5: Aykırı gözlem analizi yapınız.
 
 def outlier_thresholds(df, col_name, q1=0.25, q3=0.75):
+    # q1=0.05, q3=0.95
     q1 = df[col_name].quantile(q1)
     q3 = df[col_name].quantile(q3)
     iqr = q3 - q1
@@ -169,6 +196,44 @@ sns.heatmap(df.corr(), annot=True, cmap="RdYlGn")
 plt.tight_layout()
 plt.show()
 
+# Model
+y = df["Outcome"]
+X = df.drop("Outcome", axis=1)
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.30, random_state=17, shuffle=True, stratify=y)
+rf_model = RandomForestClassifier(random_state=46).fit(X_train, y_train)
+y_pred = rf_model.predict(X_test)
+
+print(f"Accuracy: {round(accuracy_score(y_pred, y_test), 2)}")
+print(f"Recall: {round(recall_score(y_pred, y_test), 2)}")
+print(f"Precision: {round(precision_score(y_pred, y_test), 2)}")
+print(f"F1: {round(f1_score(y_pred, y_test), 2)}")
+print(f"Auc: {round(roc_auc_score(y_pred, y_test), 2)}")
+
+"""
+Accuracy: 0.76
+Recall: 0.66
+Precision: 0.65
+F1: 0.66
+Auc: 0.74
+"""
+
+
+def plot_importance(model, features, num=len(X), save=False):
+    feature_imp = pd.DataFrame({'Value': model.feature_importances_, 'Feature': features.columns})
+    plt.figure(figsize=(10, 10))
+    sns.set(font_scale=1)
+    sns.barplot(x="Value", y="Feature", data=feature_imp.sort_values(by="Value",
+                                                                     ascending=False)[0:num])
+    plt.title('Features')
+    plt.tight_layout()
+    plt.show()
+    if save:
+        plt.savefig('importances.png')
+
+
+plot_importance(rf_model, X)
+
+
 # Görev 2 :Feature Engineering
 
 # Adım 1: Eksik ve aykırı değerler için gerekli işlemleri yapınız. Veri setinde eksik gözlem bulunmamakta ama Glikoz, Insulin vb.
@@ -176,10 +241,23 @@ plt.show()
 # değeri 0 olamayacaktır. Bu durumu dikkate alarak sıfır değerlerini ilgili değerlerde NaN olarak atama yapıp sonrasında eksik
 # değerlere işlemleri uygulayabilirsiniz.
 
-df.loc[(df["Glucose"] == 0), "Glucose"] = np.nan
-df.loc[(df["Insulin"] == 0), "Insulin"] = np.nan
+def maybe_missing(df, col_name):
+    variables = df[df[col_name] == 0].shape[0]
+    return variables
 
-na_cols = missing_values_table(df, True)
+
+for col in num_cols:
+    print(col, maybe_missing(df, col))
+
+na_columns = [col for col in df.columns if (df[col].min() == 0 and col not in ["Pregnancies", "Outcome"])]
+
+for col in na_columns:
+    df[col] = np.where(df[col] == 0, np.nan, df[col])
+
+for col in num_cols:
+    print(col, maybe_missing(df, col))
+
+na_columns = missing_values_table(df, True)
 
 
 def missing_vs_target(df, target, na_columns):
@@ -194,13 +272,11 @@ def missing_vs_target(df, target, na_columns):
                             "Count": temp_df.groupby(col)[target].count()}))
 
 
-missing_vs_target(df, "Outcome", na_cols)
+missing_vs_target(df, "Outcome", na_columns)
 
-df["Insulin"].fillna(df.groupby("Glucose")["Insulin"].transform("mean"), inplace=True)
-df["Glucose"].fillna(df.groupby("Insulin")["Glucose"].transform("mean"), inplace=True)
-
-df["Glucose"].fillna(df["Glucose"].mean(), inplace=True)
-df["Insulin"].fillna(df["Insulin"].mean(), inplace=True)
+# Filling in missing values
+for col in na_columns:
+    df.loc[df[col].isnull(), col] = df[col].median()
 
 
 def replace_with_thresholds(df, col_name):
@@ -209,14 +285,37 @@ def replace_with_thresholds(df, col_name):
     df.loc[(df[col_name] < low), col_name] = low
 
 
+# Outlier Suppression
 for col in num_cols:
     print(col, check_outlier(df, col))
+    if check_outlier(df, col):
+        replace_with_thresholds(df, col)
 
-for col in num_cols:
-    replace_with_thresholds(df, col)
+"""
+# Outliers are still in there in the name of Insulin adn SkinThickness variable
 
-for col in num_cols:
-    print(col, check_outlier(df, col))
+dff = pd.get_dummies(df[["Insulin","SkinThickness"]], drop_first=True)
+dff.isnull().sum()
+
+# Standardization of variables
+scaler = MinMaxScaler()
+dff = pd.DataFrame(scaler.fit_transform(dff), columns=dff.columns)
+dff.head()
+
+# Implement the KNN method
+from sklearn.impute import KNNImputer
+imputer = KNNImputer(n_neighbors=5)
+
+dff = pd.DataFrame(imputer.fit_transform(dff), columns=dff.columns)
+dff.head()
+
+dff = pd.DataFrame(scaler.inverse_transform(dff), columns=dff.columns)
+dff.head()
+
+df["Insulin"] = dff["Insulin"]
+df["SkinThickness"]= dff["SkinThickness"]
+df.isnull().sum()
+"""
 
 # Adım 2: Yeni değişkenler oluşturunuz.
 
@@ -354,27 +453,36 @@ df = one_hot_encoder(df, ohe_cols)
 
 # Adım 4: Numerik değişkenler için standartlaştırma yapınız.
 
-ss = StandardScaler()
-mm = MinMaxScaler()
 rs = RobustScaler()
-
 df[num_cols] = rs.fit_transform(df[num_cols])
+
+# mm = MinMaxScaler()
 # df[num_cols] = mm.fit_transform(df[num_cols])
+# ss = StandardScaler()
 # df[num_cols] = ss.fit_transform(df[num_cols])
 
 # Adım 5: Model oluşturunuz.
 
-
-y = df["Outcome"]
 X = df.drop("Outcome", axis=1)
-
+y = df["Outcome"]
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.30, random_state=17)
-
-from sklearn.ensemble import RandomForestClassifier
 
 rf_model = RandomForestClassifier(random_state=46).fit(X_train, y_train)
 y_pred = rf_model.predict(X_test)
-print(accuracy_score(y_pred, y_test))
+
+print(f"Accuracy: {round(accuracy_score(y_pred, y_test), 2)}")
+print(f"Recall: {round(recall_score(y_pred, y_test), 2)}")
+print(f"Precision: {round(precision_score(y_pred, y_test), 2)}")
+print(f"F1: {round(f1_score(y_pred, y_test), 2)}")
+print(f"Auc: {round(roc_auc_score(y_pred, y_test), 2)}")
+
+"""
+Accuracy: 0.77
+Recall: 0.69
+Precision: 0.63
+F1: 0.66
+Auc: 0.75
+"""
 
 
 def plot_importance(model, features, num=len(X), save=False):
