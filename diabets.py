@@ -267,21 +267,104 @@ def categorize_pregnancy_group(pregnancies):
     else:
         return 'High Pregnancy'
 
+
 df['PregnancyGroup'] = df['Pregnancies'].apply(categorize_pregnancy_group)
 
 df['BMI_DiabetesPedigree'] = df['BMI'] * df['DiabetesPedigreeFunction']
 df['Age_Insulin'] = df['Age'] * df['Insulin']
 df['Glucose_BMI_Difference'] = df['Glucose'] - df['BMI']
 
+cat_cols, num_cols, cat_but_car = grab_col_names(df)
+
+# Adım 3: Encoding işlemlerini gerçekleştiriniz.
 
 binary_col = [col for col in df.columns if
               df[col].dtype not in ["float64", "float32", "float", "int64", "int32", "int"] and df[col].nunique() == 2]
 
 
-cat_cols, num_cols, cat_but_car = grab_col_names(df)
+def label_encoder(df, binary_col):
+    le = LabelEncoder()
+    df[binary_col] = le.fit_transform(df[binary_col])
+    return df
 
-# Adım 3: Encoding işlemlerini gerçekleştiriniz.
+
+for col in binary_col:
+    label_encoder(df, col)
+
+
+def rare_analyser(df, target, cat_cols):
+    for col in cat_cols:
+        print(col, ":", len(df[col].value_counts()))
+        print(pd.DataFrame({
+            "COUNT": df[col].value_counts(),
+            "RATIO": df[col].value_counts() / len(df),
+            "TARGET_MEAN": df.groupby(col)[target].mean()
+        }), end="\n\n")
+
+
+rare_analyser(df, "Outcome", cat_cols)
+
+
+def rare_encoder(df, rare_perc):
+    temp_df = df.copy()
+    rare_columns = [col for col in temp_df.columns if temp_df[col].dtype == "O" and
+                    (temp_df[col].value_counts() / len(temp_df) < rare_perc).any(axis=None)]
+    # bu şarta uyan kolon var mı
+    for var in rare_columns:
+        tmp = temp_df[var].value_counts() / len(temp_df)
+        rare_labels = tmp[tmp < rare_perc].index
+        temp_df[var] = np.where(temp_df[var].isin(rare_labels), "Rare", temp_df[var])
+    return temp_df
+
+
+new_df = rare_encoder(df, 0.01)
+rare_analyser(new_df, "Outcome", cat_cols)
+
+
+def one_hot_encoder(df, categorical_cols, drop_first=True):
+    df = pd.get_dummies(df, columns=categorical_cols, drop_first=drop_first, dtype=int)
+    return df
+
+
+ohe_cols = [col for col in df.columns if 10 >= df[col].nunique() > 2]
+df = one_hot_encoder(df, ohe_cols)
 
 # Adım 4: Numerik değişkenler için standartlaştırma yapınız.
 
+ss = StandardScaler()
+mm = MinMaxScaler()
+rs = RobustScaler()
+
+df[num_cols] = rs.fit_transform(df[num_cols])
+# df[num_cols] = mm.fit_transform(df[num_cols])
+# df[num_cols] = ss.fit_transform(df[num_cols])
+
 # Adım 5: Model oluşturunuz.
+
+
+y = df["Outcome"]
+X = df.drop("Outcome", axis=1)
+
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.30, random_state=17)
+
+from sklearn.ensemble import RandomForestClassifier
+
+rf_model = RandomForestClassifier(random_state=46).fit(X_train, y_train)
+y_pred = rf_model.predict(X_test)
+print(accuracy_score(y_pred, y_test))
+
+
+def plot_importance(model, features, num=len(X), save=False):
+    feature_imp = pd.DataFrame({'Value': model.feature_importances_, 'Feature': features.columns})
+    plt.figure(figsize=(10, 10))
+    sns.set(font_scale=1)
+    sns.barplot(x="Value", y="Feature", data=feature_imp.sort_values(by="Value",
+                                                                     ascending=False)[0:num])
+    plt.title('Features')
+    plt.tight_layout()
+    plt.show()
+    if save:
+        plt.savefig('importances.png')
+
+
+plot_importance(rf_model, X_train)
