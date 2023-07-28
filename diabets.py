@@ -68,7 +68,31 @@ cat_cols, num_cols, cat_but_car = grab_col_names(df)
 
 # Adım 3: Numerik ve kategorik değişkenlerin analizini yapınız.
 
-df[cat_cols].value_counts()
+# Categorical variable analysis
+def cat_summary(df, col_name, plot=False):
+    print(pd.DataFrame({col_name: df[col_name].value_counts(),
+                        "Ratio": 100 * df[col_name].value_counts() / len(df)}))
+    print("##########################################")
+    if plot:
+        sns.countplot(x=df[col_name], data=df)
+        plt.show()
+
+for col in cat_cols:
+    cat_summary(df, col, plot=True)
+
+# Numerical variable analysis
+def num_summary(df, numerical_col, plot=False):
+    quantiles = [0.05, 0.10, 0.20, 0.30, 0.40, 0.50, 0.60, 0.70, 0.80, 0.90, 0.95, 0.99]
+    print(df[numerical_col].describe(quantiles).T)
+
+    if plot:
+        df[numerical_col].hist(bins=20)
+        plt.xlabel(numerical_col)
+        plt.title(numerical_col)
+        plt.show()
+
+for col in num_cols:
+    num_summary(df, col, plot=True)
 
 # Adım 4: Hedef değişken analizi yapınız. (Kategorik değişkenlere göre hedef değişkenin
 # ortalaması, hedef değişkene göre numerik değişkenlerin ortalaması)
