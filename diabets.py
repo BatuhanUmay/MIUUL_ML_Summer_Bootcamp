@@ -72,7 +72,7 @@ cat_cols, num_cols, cat_but_car = grab_col_names(df)
 
 # Adım 3: Numerik ve kategorik değişkenlerin analizini yapınız.
 
-# Categorical variable analysis
+# Kategorik değişkenlerin analizi
 def cat_summary(df, col_name, plot=False):
     print(pd.DataFrame({col_name: df[col_name].value_counts(),
                         "Ratio": 100 * df[col_name].value_counts() / len(df)}))
@@ -86,7 +86,7 @@ for col in cat_cols:
     cat_summary(df, col, plot=True)
 
 
-# Numerical variable analysis
+# Numerik değişkenlerin analizi
 def num_summary(df, numerical_col, plot=False):
     quantiles = [0.05, 0.10, 0.20, 0.30, 0.40, 0.50, 0.60, 0.70, 0.80, 0.90, 0.95, 0.99]
     print(df[numerical_col].describe(quantiles).T)
@@ -105,18 +105,19 @@ for col in num_cols:
 # Adım 4: Hedef değişken analizi yapınız. (Kategorik değişkenlere göre hedef değişkenin
 # ortalaması, hedef değişkene göre numerik değişkenlerin ortalaması)
 
+# Kategorik değişkenlerin target değişkene göre analizi
 def target_summary_with_cat(df, target, categorical_col):
-    print(categorical_col)
     print(pd.DataFrame({"Target_Mean": df.groupby(cat_cols)[target].mean(),
                         "Count": df[categorical_col].value_counts(),
-                        "Ratio": 100 * df[categorical_col].value_counts() / len(df)}), end="\n\n\n")
+                        "Ratio": 100 * df[categorical_col].value_counts() / len(df)}))
+    print("#" * 50)
 
 
 for col in cat_cols:
     target_summary_with_cat(df, "Outcome", col)
 
 
-# Analysis of numerical variables according to target variable
+# Numerik değişkenlerin target değişkenine göre analizi
 
 def target_summary_with_num(df, target, numerical_col):
     print(df.groupby(target).agg({numerical_col: "mean"}))
@@ -129,8 +130,8 @@ for col in num_cols:
 
 # Adım 5: Aykırı gözlem analizi yapınız.
 
-def outlier_thresholds(df, col_name, q1=0.25, q3=0.75):
-    # q1=0.05, q3=0.95
+def outlier_thresholds(df, col_name, q1=0.20, q3=0.95):
+    # q1=0.05, q3=0.95 | q1=0.25, q3=0.75
     q1 = df[col_name].quantile(q1)
     q3 = df[col_name].quantile(q3)
     iqr = q3 - q1
@@ -141,6 +142,17 @@ def outlier_thresholds(df, col_name, q1=0.25, q3=0.75):
 
 for col in num_cols:
     print(col, outlier_thresholds(df, col))
+
+"""
+Pregnancies (-12.5, 23.5)
+Glucose (-34.0, 310.0)
+BloodPressure (15.0, 135.0)
+SkinThickness (-66.0, 110.0)
+Insulin (-439.5, 732.5)
+BMI (-1.8424999999999976, 72.13749999999999)
+DiabetesPedigreeFunction (-1.1507749999999994, 2.503024999999999)
+Age (-29.5, 110.5)
+"""
 
 
 def check_outlier(df, col_name):
@@ -157,13 +169,11 @@ for col in num_cols:
 def grab_outlier(df, col_name, index=False):
     low, up = outlier_thresholds(df, col)
 
-    if df[(df[col_name] > up) | (df[col_name] < low)].shape[0] > 10:
+    if df[(df[col_name] > up) | (df[col_name] < low)].shape[0] > 0:
         print(f"{col_name} Aykırı değer sayısı:", len(df[(df[col_name] > up) | (df[col_name] < low)]))
         print(df[(df[col_name] > up) | (df[col_name] < low)].head())
-
     else:
-        print(f"{col_name} Aykırı değer sayısı:", len(df[(df[col_name] > up) | (df[col_name] < low)]))
-        print(df[(df[col_name] > up) | (df[col_name] < low)])
+        print(f"{col} için aykırı değer yok.")
 
     if index:
         outlier_index = df[(df[col_name] > up) | (df[col_name] < low)].index
@@ -171,7 +181,7 @@ def grab_outlier(df, col_name, index=False):
 
 
 for col in num_cols:
-    print(col, grab_outlier(df, col))
+    print(col, grab_outlier(df, col, True))
     print("*" * 50)
 
 
@@ -197,8 +207,8 @@ plt.tight_layout()
 plt.show()
 
 # Model
-y = df["Outcome"]
 X = df.drop("Outcome", axis=1)
+y = df["Outcome"]
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.30, random_state=17, shuffle=True, stratify=y)
 rf_model = RandomForestClassifier(random_state=46).fit(X_train, y_train)
 y_pred = rf_model.predict(X_test)
@@ -220,7 +230,7 @@ Auc: 0.74
 
 def plot_importance(model, features, num=len(X), save=False):
     feature_imp = pd.DataFrame({'Value': model.feature_importances_, 'Feature': features.columns})
-    plt.figure(figsize=(10, 10))
+    plt.figure(figsize=(12, 7))
     sns.set(font_scale=1)
     sns.barplot(x="Value", y="Feature", data=feature_imp.sort_values(by="Value",
                                                                      ascending=False)[0:num])
@@ -252,10 +262,7 @@ for col in num_cols:
 na_columns = [col for col in df.columns if (df[col].min() == 0 and col not in ["Pregnancies", "Outcome"])]
 
 for col in na_columns:
-    df[col] = np.where(df[col] == 0, np.nan, df[col])
-
-for col in num_cols:
-    print(col, maybe_missing(df, col))
+    df[col] = np.where(df[col] == 0, np.nan, df[col])  # 0 değerinin anlamlı olmadığı değişkenler için NA ataması
 
 na_columns = missing_values_table(df, True)
 
@@ -277,6 +284,8 @@ missing_vs_target(df, "Outcome", na_columns)
 # Filling in missing values
 for col in na_columns:
     df.loc[df[col].isnull(), col] = df[col].median()
+
+df.isnull().sum()
 
 
 def replace_with_thresholds(df, col_name):
@@ -323,6 +332,41 @@ df['Glucose_BMI'] = df['Glucose'] * df['BMI']
 df['Age_DiabetesPedigreeFunction'] = df['Age'] * df['DiabetesPedigreeFunction']
 df['Pregnancies_Per_Age'] = df['Pregnancies'] / df['Age']
 df['Glucose_Minus_Insulin'] = df['Glucose'] - df['Insulin']
+df['GIR'] = df['Glucose'] / df['Insulin']
+df['NEW_BMI'] = pd.cut(x=df['BMI'], bins=[0, 18.5, 24.9, 29.9, 100],
+                       labels=["Underweight", "Healthy", "Overweight", "Obese"])
+df["NEW_GLUCOSE"] = pd.cut(x=df["Glucose"], bins=[0, 140, 200, 300], labels=["Normal", "Prediabetes", "Diabetes"])
+df["Age_Cat"] = pd.cut(df["Age"], bins=[0, 15, 25, 64, 82], labels=["Child", "Young", "Adult", "Senior"])
+df['BMI_DiabetesPedigree'] = df['BMI'] * df['DiabetesPedigreeFunction']
+df['Age_Insulin'] = df['Age'] * df['Insulin']
+df['Glucose_BMI_Difference'] = df['Glucose'] - df['BMI']
+df["glucose_per_bmi"] = df["Glucose"] / df["BMI"]
+df["insulin_per_age"] = df["Insulin"] / df["Age"]
+
+
+# # # Yaş ve beden kitle indeksini bir arada düşünerek kategorik değişken oluşturma
+# df.loc[(df["BMI"] < 18.5) & ((df["Age"] >= 21) & (df["Age"] < 50)), "NEW_AGE_BMI_NOM"] = "underweightmature"
+# df.loc[(df["BMI"] < 18.5) & (df["Age"] >= 50), "NEW_AGE_BMI_NOM"] = "underweightsenior"
+# df.loc[((df["BMI"] >= 18.5) & (df["BMI"] < 25)) & (
+#         (df["Age"] >= 21) & (df["Age"] < 50)), "NEW_AGE_BMI_NOM"] = "healthymature"
+# df.loc[((df["BMI"] >= 18.5) & (df["BMI"] < 25)) & (df["Age"] >= 50), "NEW_AGE_BMI_NOM"] = "healthysenior"
+# df.loc[((df["BMI"] >= 25) & (df["BMI"] < 30)) & (
+#         (df["Age"] >= 21) & (df["Age"] < 50)), "NEW_AGE_BMI_NOM"] = "overweightmature"
+# df.loc[((df["BMI"] >= 25) & (df["BMI"] < 30)) & (df["Age"] >= 50), "NEW_AGE_BMI_NOM"] = "overweightsenior"
+# df.loc[(df["BMI"] > 18.5) & ((df["Age"] >= 21) & (df["Age"] < 50)), "NEW_AGE_BMI_NOM"] = "obesemature"
+# df.loc[(df["BMI"] > 18.5) & (df["Age"] >= 50), "NEW_AGE_BMI_NOM"] = "obesesenior"
+#
+# # Yaş ve Glikoz değerlerini bir arada düşünerek kategorik değişken oluşturma
+# df.loc[(df["Glucose"] < 70) & ((df["Age"] >= 21) & (df["Age"] < 50)), "NEW_AGE_GLUCOSE_NOM"] = "lowmature"
+# df.loc[(df["Glucose"] < 70) & (df["Age"] >= 50), "NEW_AGE_GLUCOSE_NOM"] = "lowsenior"
+# df.loc[((df["Glucose"] >= 70) & (df["Glucose"] < 100)) & (
+#         (df["Age"] >= 21) & (df["Age"] < 50)), "NEW_AGE_GLUCOSE_NOM"] = "normalmature"
+# df.loc[((df["Glucose"] >= 70) & (df["Glucose"] < 100)) & (df["Age"] >= 50), "NEW_AGE_GLUCOSE_NOM"] = "normalsenior"
+# df.loc[((df["Glucose"] >= 100) & (df["Glucose"] <= 125)) & (
+#         (df["Age"] >= 21) & (df["Age"] < 50)), "NEW_AGE_GLUCOSE_NOM"] = "hiddenmature"
+# df.loc[((df["Glucose"] >= 100) & (df["Glucose"] <= 125)) & (df["Age"] >= 50), "NEW_AGE_GLUCOSE_NOM"] = "hiddensenior"
+# df.loc[(df["Glucose"] > 125) & ((df["Age"] >= 21) & (df["Age"] < 50)), "NEW_AGE_GLUCOSE_NOM"] = "highmature"
+# df.loc[(df["Glucose"] > 125) & (df["Age"] >= 50), "NEW_AGE_GLUCOSE_NOM"] = "highsenior"
 
 
 def categorize_blood_pressure(blood_pressure):
@@ -336,22 +380,36 @@ def categorize_blood_pressure(blood_pressure):
 
 df['BloodPressureLevel'] = df['BloodPressure'].apply(categorize_blood_pressure)
 
-df['GIR'] = df['Glucose'] / df['Insulin']
+
+def insulin_level(dataframe):
+    if dataframe["Insulin"] <= 100:
+        return "Normal"
+    if dataframe["Insulin"] > 100 and dataframe["Insulin"] <= 126:
+        return "Prediabetes"
+    elif dataframe["Insulin"] > 126:
+        return "Diabetes"
 
 
-def categorize_bmi(bmi):
-    if bmi < 18.5:
-        return 'Underweight'
-    elif bmi >= 18.5 and bmi < 25:
-        return 'Normal'
-    elif bmi >= 25 and bmi < 30:
-        return 'Overweight'
+df["Insulin_Level"] = df.apply(insulin_level, axis=1)
+
+
+def glucose_level(glucose):
+    if 16 <= glucose <= 140:
+        return "Normal"
     else:
-        return 'Obese'
+        return "Abnormal"
 
 
-df['BMICategory'] = df['BMI'].apply(categorize_bmi)
+df["Glucose"] = df["Glucose"].apply(glucose_level)
 
+
+# def glucose_level(dataframe, col_name="Glucose"):
+#     if 16 <= dataframe[col_name] <= 140:
+#         return "Normal"
+#     else:
+#         return "Abnormal"
+# df["Glucose_Level"] = df.apply(glucose_level, axis=1)
+# df["Glucose_Level"] = df.apply(glucose_level, axis=1)
 
 def categorize_skin_thickness(skin_thickness):
     if skin_thickness < 10:
@@ -365,22 +423,6 @@ def categorize_skin_thickness(skin_thickness):
 df['SkinThicknessCategory'] = df['SkinThickness'].apply(categorize_skin_thickness)
 
 
-def categorize_age_group(age):
-    if age <= 2:
-        return 'Babies'
-    elif age <= 16:
-        return "Children"
-    elif age <= 30:
-        return 'Young Adults'
-    elif age <= 45:
-        return 'Middle-aged Adults'
-    else:
-        return 'Old Adults'
-
-
-df['AgeGroup'] = df['Age'].apply(categorize_age_group)
-
-
 def categorize_pregnancy_group(pregnancies):
     if pregnancies == 0:
         return 'No Pregnancy'
@@ -392,16 +434,13 @@ def categorize_pregnancy_group(pregnancies):
 
 df['PregnancyGroup'] = df['Pregnancies'].apply(categorize_pregnancy_group)
 
-df['BMI_DiabetesPedigree'] = df['BMI'] * df['DiabetesPedigreeFunction']
-df['Age_Insulin'] = df['Age'] * df['Insulin']
-df['Glucose_BMI_Difference'] = df['Glucose'] - df['BMI']
-
 cat_cols, num_cols, cat_but_car = grab_col_names(df)
 
 # Adım 3: Encoding işlemlerini gerçekleştiriniz.
 
+
 binary_col = [col for col in df.columns if
-              df[col].dtype not in ["float64", "float32", "float", "int64", "int32", "int"] and df[col].nunique() == 2]
+              df[col].dtypes in ['object', 'category'] and df[col].nunique() == 2 and col not in ["OUTCOME"]]
 
 
 def label_encoder(df, binary_col):
@@ -453,6 +492,7 @@ df = one_hot_encoder(df, ohe_cols)
 
 # Adım 4: Numerik değişkenler için standartlaştırma yapınız.
 
+
 rs = RobustScaler()
 df[num_cols] = rs.fit_transform(df[num_cols])
 
@@ -462,6 +502,29 @@ df[num_cols] = rs.fit_transform(df[num_cols])
 # df[num_cols] = ss.fit_transform(df[num_cols])
 
 # Adım 5: Model oluşturunuz.
+
+"""
+# rare_analyser sonrası new_df üzerinden yapılan modelin sonuçları
+my_df = new_df.copy()
+my_df = one_hot_encoder(my_df, ohe_cols)
+my_df[num_cols] = rs.fit_transform(my_df[num_cols])
+X = my_df.drop("Outcome", axis=1)
+y = my_df["Outcome"]
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.30, random_state=17)
+rf_model = RandomForestClassifier(random_state=46).fit(X_train, y_train)
+y_pred = rf_model.predict(X_test)
+print(f"Accuracy: {round(accuracy_score(y_pred, y_test), 2)}")
+print(f"Recall: {round(recall_score(y_pred, y_test), 2)}")
+print(f"Precision: {round(precision_score(y_pred, y_test), 2)}")
+print(f"F1: {round(f1_score(y_pred, y_test), 2)}")
+print(f"Auc: {round(roc_auc_score(y_pred, y_test), 2)}")
+
+# Accuracy: 0.76
+# Recall: 0.69
+# Precision: 0.59
+# F1: 0.64
+# Auc: 0.74
+"""
 
 X = df.drop("Outcome", axis=1)
 y = df["Outcome"]
@@ -477,11 +540,11 @@ print(f"F1: {round(f1_score(y_pred, y_test), 2)}")
 print(f"Auc: {round(roc_auc_score(y_pred, y_test), 2)}")
 
 """
-Accuracy: 0.77
-Recall: 0.69
-Precision: 0.63
-F1: 0.66
-Auc: 0.75
+Accuracy: 0.78
+Recall: 0.71
+Precision: 0.64
+F1: 0.68
+Auc: 0.76
 """
 
 
