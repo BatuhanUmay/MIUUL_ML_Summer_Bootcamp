@@ -99,3 +99,60 @@ b = reg_model.intercept_[0]
 # tv'nin katsayısı (w1)
 w = reg_model.coef_[0]
 
+##########################
+# Tahmin
+##########################
+
+# Aşağıdaki gözlem değerlerine göre satışın beklenen değeri nedir?
+
+# TV: 30
+# radio: 10
+# newspaper: 40
+# 2.90
+# 0.0468431 , 0.17854434, 0.00258619
+# Sales = 2.90  + TV * 0.04 + radio * 0.17 + newspaper * 0.002
+# 2.90794702 + 30 * 0.0468431 + 10 * 0.17854434 + 40 * 0.00258619
+
+yeni_veri = [[30], [10], [40]]
+yeni_veri = pd.DataFrame(yeni_veri).T
+reg_model.predict(yeni_veri)
+
+reg_model.predict(pd.DataFrame([[30], [10], [40]]).T)
+reg_model.predict(np.array([30, 10, 40]).reshape(1, -1))
+
+##########################
+# Tahmin Başarısını Değerlendirme
+##########################
+
+# Train RMSE
+y_pred = reg_model.predict(X_train)
+np.sqrt(mean_squared_error(y_train, y_pred))
+
+# TRAIN RKARE
+reg_model.score(X_train, y_train)
+
+# Test RMSE
+y_pred = reg_model.predict(X_test)  # bağımsız değişkenler modele sorulur ve oda bağımlı değişkenini tahmin eder
+np.sqrt(mean_squared_error(y_test, y_pred))
+
+# Test RKARE
+reg_model.score(X_test, y_test)
+
+# 10 Katlı CV RMSE
+np.mean(np.sqrt(-cross_val_score(reg_model,
+                                 X,
+                                 y,
+                                 cv=10,
+                                 scoring="neg_mean_squared_error")))
+
+# 5 Katlı CV RMSE
+np.mean(np.sqrt(-cross_val_score(reg_model,
+                                 X,
+                                 y,
+                                 cv=5,
+                                 scoring="neg_mean_squared_error")))
+
+######################################################
+# Simple Linear Regression with Gradient Descent from Scratch
+######################################################
+
