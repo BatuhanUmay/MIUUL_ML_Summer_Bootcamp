@@ -156,3 +156,4 @@ np.mean(np.sqrt(-cross_val_score(reg_model,
 # Simple Linear Regression with Gradient Descent from Scratch
 ######################################################
 
+
