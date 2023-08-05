@@ -107,7 +107,7 @@ for col in num_cols:
 
 # Kategorik değişkenlerin target değişkene göre analizi
 def target_summary_with_cat(df, target, categorical_col):
-    print(pd.DataFrame({"Target_Mean": df.groupby(cat_cols)[target].mean(),
+    print(pd.DataFrame({"Target_Mean": df.groupby(categorical_col)[target].mean(),
                         "Count": df[categorical_col].value_counts(),
                         "Ratio": 100 * df[categorical_col].value_counts() / len(df)}))
     print("#" * 50)
